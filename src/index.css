@@ -1,0 +1,9 @@
+@import "tailwindcss";
+
+/* Regulă globală pentru toate butoanele și chestiile interactive */
+button,
+input[type="checkbox"],
+input[type="radio"],
+[role="button"] {
+    cursor: pointer !important;
+}
