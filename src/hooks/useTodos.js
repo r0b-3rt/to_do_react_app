@@ -1,37 +1,95 @@
-import { useState } from "react";
+import {
+    addDoc,
+    collection,
+    deleteDoc,
+    doc,
+    onSnapshot,
+    query,
+    serverTimestamp,
+    updateDoc,
+    where,
+} from "firebase/firestore";
+import { useEffect, useState } from "react";
 import { FILTERS } from "../constants/filters";
+import { db } from "../firebase";
 import { filterTodos } from "../utils/filterTodos";
-import { useLocalStorage } from "./useLocalStorage";
 
-export const useTodos = () => {
-    const [todos, setTodos] = useLocalStorage("todos_app_data", []);
+export const useTodos = user => {
+    const [todos, setTodos] = useState([]);
     const [filter, setFilter] = useState(FILTERS.ALL);
 
-    const addTodo = (text, time) => {
-        if (!text.trim()) return;
+    // Sincronizare în timp real cu Firestore când userul este logat
+    useEffect(() => {
+        if (!user) {
+            setTodos([]);
+            return;
+        }
 
-        // Generare ID compatibilă 100% cu mobil/browsere fără HTTPS
-        const newTodo = {
-            id: Date.now().toString() + Math.random().toString(36).substring(2, 9),
-            text: text.trim(),
-            time: time || null,
-            completed: false,
-            createdAt: new Date().toISOString(),
-        };
+        // Creăm un query care aduce doar taskurile utilizatorului curent
+        const q = query(collection(db, "todos"), where("userId", "==", user.uid));
 
-        setTodos(prevTodos => [newTodo, ...prevTodos]);
+        // onSnapshot ascultă modificările în timp real din baza de date
+        const unsubscribe = onSnapshot(
+            q,
+            snapshot => {
+                const todosData = snapshot.docs.map(doc => ({
+                    id: doc.id,
+                    ...doc.data(),
+                }));
+                // Sortăm opțional după dată (cele mai recente sus)
+                setTodos(todosData);
+            },
+            error => {
+                console.error("Eroare la preluarea taskurilor:", error);
+            },
+        );
+
+        return () => unsubscribe();
+    }, [user]);
+
+    const addTodo = async (text, time) => {
+        if (!text.trim() || !user) return;
+
+        try {
+            await addDoc(collection(db, "todos"), {
+                userId: user.uid,
+                text: text.trim(),
+                time: time || null,
+                completed: false,
+                createdAt: serverTimestamp(),
+            });
+        } catch (error) {
+            console.error("Eroare la adăugarea taskului:", error);
+        }
     };
 
-    const toggleTodo = id => {
-        setTodos(prevTodos => prevTodos.map(todo => (todo.id === id ? { ...todo, completed: !todo.completed } : todo)));
+    const toggleTodo = async (id, currentCompleted) => {
+        try {
+            const todoRef = doc(db, "todos", id);
+            await updateDoc(todoRef, {
+                completed: !currentCompleted,
+            });
+        } catch (error) {
+            console.error("Eroare la actualizarea taskului:", error);
+        }
     };
 
-    const deleteTodo = id => {
-        setTodos(prevTodos => prevTodos.filter(todo => todo.id !== id));
+    const deleteTodo = async id => {
+        try {
+            await deleteDoc(doc(db, "todos", id));
+        } catch (error) {
+            console.error("Eroare la ștergerea taskului:", error);
+        }
     };
 
-    const clearCompleted = () => {
-        setTodos(prevTodos => prevTodos.filter(todo => !todo.completed));
+    const clearCompleted = async () => {
+        try {
+            const completedTodos = todos.filter(todo => todo.completed);
+            // Ștergem fiecare task completat din Firestore
+            await Promise.all(completedTodos.map(todo => deleteDoc(doc(db, "todos", todo.id))));
+        } catch (error) {
+            console.error("Eroare la ștergerea taskurilor gata:", error);
+        }
     };
 
     const filteredTodos = filterTodos(todos, filter);
