@@ -9,6 +9,7 @@ import { ThemeToggle } from "./components/ThemeToggle";
 import { TodoCounter } from "./components/TodoCounter";
 import { TodoForm } from "./components/TodoForm";
 import { TodoList } from "./components/TodoList";
+import { UserProfileBadge } from "./components/UserProfileBadge"; // <--- Importăm componenta nouă
 import { useDarkMode } from "./hooks/useDarkMode";
 import { useTodos } from "./hooks/useTodos";
 
@@ -18,8 +19,21 @@ export function App() {
     const [isSignup, setIsSignup] = useState(false);
 
     const [isDark, toggleDarkMode] = useDarkMode();
-    const { todos, activeCount, completedCount, filter, setFilter, addTodo, toggleTodo, deleteTodo, clearCompleted } =
-        useTodos(user);
+    const {
+        todos,
+        activeCount,
+        completedCount,
+        filter,
+        setFilter,
+        addTodo,
+        toggleTodo,
+        deleteTodo,
+        clearCompleted,
+        userXp,
+    } = useTodos(user);
+
+    // Calculăm XP-ul total adunând punctele din toate task-urile (sau doar cele completate, cum preferi)
+    const totalXp = todos.reduce((acc, task) => acc + (task.xp || 0), 0);
 
     useEffect(() => {
         const unsubscribe = onAuthStateChanged(auth, currentUser => {
@@ -45,12 +59,20 @@ export function App() {
 
     if (!user) {
         return (
-            <div className="min-h-screen bg-gray-50/50 dark:bg-gray-950 text-gray-900 dark:text-gray-100 flex items-center justify-center p-4 font-sans antialiased">
-                <main className="w-full max-w-md bg-white dark:bg-gray-900 p-8 rounded-3xl shadow-sm border border-gray-100 dark:border-gray-800">
+            <div className="min-h-screen bg-gray-50/50 dark:bg-gray-950 text-gray-900 dark:text-gray-100 flex items-center justify-center p-4 font-sans antialiased transition-colors duration-300">
+                <main className="w-full max-w-md bg-white dark:bg-gray-900 p-8 rounded-3xl shadow-sm border border-gray-100 dark:border-gray-800 transition-colors duration-300">
                     {isSignup ? (
-                        <SignupForm onSwitchToLogin={() => setIsSignup(false)} />
+                        <SignupForm
+                            onSwitchToLogin={() => setIsSignup(false)}
+                            isDark={isDark}
+                            onToggleTheme={toggleDarkMode}
+                        />
                     ) : (
-                        <LoginForm onSwitchToSignup={() => setIsSignup(true)} />
+                        <LoginForm
+                            onSwitchToSignup={() => setIsSignup(true)}
+                            isDark={isDark}
+                            onToggleTheme={toggleDarkMode}
+                        />
                     )}
                 </main>
             </div>
@@ -66,16 +88,17 @@ export function App() {
                             <h1 className="text-3xl font-extrabold tracking-tight text-gray-900 dark:text-white">
                                 My Tasks
                             </h1>
-                            <p className="text-gray-400 dark:text-gray-500 text-xs font-medium mt-1">
-                                {currentDate} • <span className="text-indigo-500">{user.email}</span>
-                            </p>
+                            <p className="text-gray-400 dark:text-gray-500 text-xs font-medium mt-1">{currentDate}</p>
                         </div>
+
+                        {/* Zona din dreapta: UserProfileBadge + ThemeToggle + Logout */}
                         <div className="flex items-center gap-2">
+                            <UserProfileBadge user={user} totalXp={userXp} />
                             <ThemeToggle isDark={isDark} onToggle={toggleDarkMode} />
                             <button
                                 onClick={() => signOut(auth)}
                                 title="Log Out"
-                                className="p-2 text-gray-400 hover:text-red-500 transition-colors rounded-xl hover:bg-gray-100 dark:hover:bg-gray-800"
+                                className="p-2 text-gray-400 hover:text-red-500 transition-colors rounded-xl hover:bg-gray-100 dark:hover:bg-gray-800 cursor-pointer"
                             >
                                 <svg
                                     xmlns="http://www.w3.org/2000/svg"
@@ -86,7 +109,7 @@ export function App() {
                                 >
                                     <path
                                         strokeLinecap="round"
-                                        strokeLinejoin="strokeWidth"
+                                        strokeLinejoin="round"
                                         strokeWidth={2}
                                         d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"
                                     />

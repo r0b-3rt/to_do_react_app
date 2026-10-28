@@ -16,22 +16,24 @@ import { useEffect, useState } from "react";
 import { FILTERS } from "../constants/filters";
 import { db } from "../firebase";
 import { filterTodos } from "../utils/filterTodos";
-import { calculateTaskXp } from "../utils/geminiXp"; // Importăm funcția Gemini
+import { calculateTaskXp } from "../utils/geminiXp";
 
 export const useTodos = user => {
     const [todos, setTodos] = useState([]);
     const [filter, setFilter] = useState(FILTERS.ALL);
+    const [userXp, setUserXp] = useState(0); // Starea pentru XP-ul total din colecția 'users'
 
-    // Sincronizare în timp real cu Firestore când userul este logat
+    // Sincronizare în timp real cu Firestore pentru task-uri și XP-ul utilizatorului
     useEffect(() => {
         if (!user) {
             setTodos([]);
+            setUserXp(0);
             return;
         }
 
+        // 1. Ascultăm task-urile utilizatorului
         const q = query(collection(db, "todos"), where("userId", "==", user.uid));
-
-        const unsubscribe = onSnapshot(
+        const unsubscribeTodos = onSnapshot(
             q,
             snapshot => {
                 const todosData = snapshot.docs.map(doc => ({
@@ -45,7 +47,26 @@ export const useTodos = user => {
             },
         );
 
-        return () => unsubscribe();
+        // 2. Ascultăm documentul utilizatorului din colecția 'users' pentru XP total în timp real
+        const userRef = doc(db, "users", user.uid);
+        const unsubscribeUser = onSnapshot(
+            userRef,
+            docSnap => {
+                if (docSnap.exists()) {
+                    setUserXp(docSnap.data().xp || 0);
+                } else {
+                    setUserXp(0);
+                }
+            },
+            error => {
+                console.error("Eroare la preluarea XP-ului:", error);
+            },
+        );
+
+        return () => {
+            unsubscribeTodos();
+            unsubscribeUser();
+        };
     }, [user]);
 
     const addTodo = async (text, time) => {
@@ -64,36 +85,28 @@ export const useTodos = user => {
         }
     };
 
-    // Funcția toggleTodo modificată să adauge XP prin Gemini când un task devine completat
     const toggleTodo = async (id, currentCompleted) => {
         try {
             const todoRef = doc(db, "todos", id);
             const targetTodo = todos.find(t => t.id === id);
 
-            // Dacă task-ul NU era completat și acum va fi marcat ca gata (!currentCompleted)
             if (!currentCompleted && targetTodo && user) {
-                // 1. Cerem XP de la Gemini bazat pe textul task-ului
                 const evaluation = await calculateTaskXp(targetTodo.text);
 
-                // Afișăm un mesaj frumos cu XP-ul câștigat și motivul AI
                 alert(`🎉 +${evaluation.xp} XP obținut!\n🤖 Motiv: ${evaluation.reason}`);
 
-                // 2. Salvăm XP-ul în documentul utilizatorului din Firestore (colecția 'users')
                 const userRef = doc(db, "users", user.uid);
                 const userSnap = await getDoc(userRef);
 
                 if (!userSnap.exists()) {
-                    // Dacă documentul userului nu există încă, îl creăm cu 0 XP inițial
                     await setDoc(userRef, { xp: evaluation.xp, email: user.email });
                 } else {
-                    // Dacă există, doar incrementăm valoarea de XP
                     await updateDoc(userRef, {
                         xp: increment(evaluation.xp),
                     });
                 }
             }
 
-            // 3. Actualizăm starea task-ului în baza de date
             await updateDoc(todoRef, {
                 completed: !currentCompleted,
             });
@@ -134,6 +147,7 @@ export const useTodos = user => {
         toggleTodo,
         deleteTodo,
         clearCompleted,
+        userXp, // <--- Returnăm XP-ul total aici
     };
 };
 
