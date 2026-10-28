@@ -10,9 +10,11 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@google/genai": "^2.31.0",
     "@tailwindcss/vite": "^4.3.3",
     "firebase": "^13.1.0",
     "framer-motion": "^14.0.0",
+    "node-fetch": "^3.3.2",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "tailwindcss": "^4.3.3"

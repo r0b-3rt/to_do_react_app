@@ -3,9 +3,12 @@ import {
     collection,
     deleteDoc,
     doc,
+    getDoc,
+    increment,
     onSnapshot,
     query,
     serverTimestamp,
+    setDoc,
     updateDoc,
     where,
 } from "firebase/firestore";
@@ -13,6 +16,7 @@ import { useEffect, useState } from "react";
 import { FILTERS } from "../constants/filters";
 import { db } from "../firebase";
 import { filterTodos } from "../utils/filterTodos";
+import { calculateTaskXp } from "../utils/geminiXp"; // Importăm funcția Gemini
 
 export const useTodos = user => {
     const [todos, setTodos] = useState([]);
@@ -25,10 +29,8 @@ export const useTodos = user => {
             return;
         }
 
-        // Creăm un query care aduce doar taskurile utilizatorului curent
         const q = query(collection(db, "todos"), where("userId", "==", user.uid));
 
-        // onSnapshot ascultă modificările în timp real din baza de date
         const unsubscribe = onSnapshot(
             q,
             snapshot => {
@@ -36,7 +38,6 @@ export const useTodos = user => {
                     id: doc.id,
                     ...doc.data(),
                 }));
-                // Sortăm opțional după dată (cele mai recente sus)
                 setTodos(todosData);
             },
             error => {
@@ -63,14 +64,41 @@ export const useTodos = user => {
         }
     };
 
+    // Funcția toggleTodo modificată să adauge XP prin Gemini când un task devine completat
     const toggleTodo = async (id, currentCompleted) => {
         try {
             const todoRef = doc(db, "todos", id);
+            const targetTodo = todos.find(t => t.id === id);
+
+            // Dacă task-ul NU era completat și acum va fi marcat ca gata (!currentCompleted)
+            if (!currentCompleted && targetTodo && user) {
+                // 1. Cerem XP de la Gemini bazat pe textul task-ului
+                const evaluation = await calculateTaskXp(targetTodo.text);
+
+                // Afișăm un mesaj frumos cu XP-ul câștigat și motivul AI
+                alert(`🎉 +${evaluation.xp} XP obținut!\n🤖 Motiv: ${evaluation.reason}`);
+
+                // 2. Salvăm XP-ul în documentul utilizatorului din Firestore (colecția 'users')
+                const userRef = doc(db, "users", user.uid);
+                const userSnap = await getDoc(userRef);
+
+                if (!userSnap.exists()) {
+                    // Dacă documentul userului nu există încă, îl creăm cu 0 XP inițial
+                    await setDoc(userRef, { xp: evaluation.xp, email: user.email });
+                } else {
+                    // Dacă există, doar incrementăm valoarea de XP
+                    await updateDoc(userRef, {
+                        xp: increment(evaluation.xp),
+                    });
+                }
+            }
+
+            // 3. Actualizăm starea task-ului în baza de date
             await updateDoc(todoRef, {
                 completed: !currentCompleted,
             });
         } catch (error) {
-            console.error("Eroare la actualizarea taskului:", error);
+            console.error("Eroare la actualizarea taskului sau acordarea XP-ului:", error);
         }
     };
 
@@ -85,7 +113,6 @@ export const useTodos = user => {
     const clearCompleted = async () => {
         try {
             const completedTodos = todos.filter(todo => todo.completed);
-            // Ștergem fiecare task completat din Firestore
             await Promise.all(completedTodos.map(todo => deleteDoc(doc(db, "todos", todo.id))));
         } catch (error) {
             console.error("Eroare la ștergerea taskurilor gata:", error);
