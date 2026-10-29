@@ -5,11 +5,13 @@ import SignupForm from "./auth/SignupForm";
 import { auth } from "./firebase";
 
 import { FilterBar } from "./components/FilterBar";
+import { LeaderboardModal } from "./components/LeaderboardModal";
 import { ThemeToggle } from "./components/ThemeToggle";
 import { TodoCounter } from "./components/TodoCounter";
 import { TodoForm } from "./components/TodoForm";
 import { TodoList } from "./components/TodoList";
-import { UserProfileBadge } from "./components/UserProfileBadge"; // <--- Importăm componenta nouă
+import { UserProfileBadge } from "./components/UserProfileBadge";
+import { UserProfileModal } from "./components/UserProfileModal"; // <--- Importăm modalul de profil
 import { useDarkMode } from "./hooks/useDarkMode";
 import { useTodos } from "./hooks/useTodos";
 
@@ -17,6 +19,8 @@ export function App() {
     const [user, setUser] = useState(null);
     const [loading, setLoading] = useState(true);
     const [isSignup, setIsSignup] = useState(false);
+    const [isLeaderboardOpen, setIsLeaderboardOpen] = useState(false);
+    const [isProfileOpen, setIsProfileOpen] = useState(false); // <--- Stare pentru pop-up-ul de profil
 
     const [isDark, toggleDarkMode] = useDarkMode();
     const {
@@ -31,9 +35,6 @@ export function App() {
         clearCompleted,
         userXp,
     } = useTodos(user);
-
-    // Calculăm XP-ul total adunând punctele din toate task-urile (sau doar cele completate, cum preferi)
-    const totalXp = todos.reduce((acc, task) => acc + (task.xp || 0), 0);
 
     useEffect(() => {
         const unsubscribe = onAuthStateChanged(auth, currentUser => {
@@ -91,10 +92,22 @@ export function App() {
                             <p className="text-gray-400 dark:text-gray-500 text-xs font-medium mt-1">{currentDate}</p>
                         </div>
 
-                        {/* Zona din dreapta: UserProfileBadge + ThemeToggle + Logout */}
+                        {/* Butoanele din dreapta: Profil + Leaderboard + ThemeToggle + Logout */}
                         <div className="flex items-center gap-2">
-                            <UserProfileBadge user={user} totalXp={userXp} />
+                            {/* Buton Iconiță Profil care deschide modalul */}
+                            <UserProfileBadge onClick={() => setIsProfileOpen(true)} />
+
+                            {/* Buton Leaderboard */}
+                            <button
+                                onClick={() => setIsLeaderboardOpen(true)}
+                                title="Clasament Global"
+                                className="p-2.5 rounded-2xl bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 transition-all cursor-pointer border border-gray-200/50 dark:border-gray-700/50 active:scale-95 text-sm"
+                            >
+                                🏆
+                            </button>
+
                             <ThemeToggle isDark={isDark} onToggle={toggleDarkMode} />
+
                             <button
                                 onClick={() => signOut(auth)}
                                 title="Log Out"
@@ -117,6 +130,21 @@ export function App() {
                             </button>
                         </div>
                     </header>
+
+                    {/* Modalul pentru Profil */}
+                    <UserProfileModal
+                        isOpen={isProfileOpen}
+                        onClose={() => setIsProfileOpen(false)}
+                        user={user}
+                        totalXp={userXp}
+                    />
+
+                    {/* Modalul pentru Leaderboard */}
+                    <LeaderboardModal
+                        isOpen={isLeaderboardOpen}
+                        onClose={() => setIsLeaderboardOpen(false)}
+                        currentUserUid={user.uid}
+                    />
 
                     <div className="mb-5">
                         <FilterBar currentFilter={filter} onFilterChange={setFilter} />
