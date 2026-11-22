@@ -1,9 +1,12 @@
-import { createUserWithEmailAndPassword } from "firebase/auth";
+import { createUserWithEmailAndPassword, updateProfile } from "firebase/auth";
+import { doc, setDoc } from "firebase/firestore";
 import { useState } from "react";
-import { ThemeToggle } from "../components/ThemeToggle"; // Ajustează calea dacă e nevoie
-import { auth } from "../firebase";
+import { ThemeToggle } from "../components/ThemeToggle";
+import { auth, db } from "../firebase";
+import { NAME_MAX, validateName } from "../utils/profile";
 
 export default function SignupForm({ onSwitchToLogin, isDark, onToggleTheme }) {
+    const [name, setName] = useState("");
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
     const [error, setError] = useState("");
@@ -24,10 +27,20 @@ export default function SignupForm({ onSwitchToLogin, isDark, onToggleTheme }) {
 
     const handleSignup = async e => {
         e.preventDefault();
+        const nameProblem = validateName(name);
+        if (nameProblem) return setError(nameProblem);
         setError("");
         setLoading(true);
         try {
-            await createUserWithEmailAndPassword(auth, email, password);
+            const { user } = await createUserWithEmailAndPassword(auth, email, password);
+            const displayName = name.trim();
+            try {
+                await setDoc(doc(db, "users", user.uid), { name: displayName }, { merge: true });
+                await updateProfile(user, { displayName });
+            } catch (profileErr) {
+                // The account exists; the name can be set later from the profile
+                console.error("Failed to save display name:", profileErr);
+            }
         } catch (err) {
             setError(getFriendlyErrorMessage(err.code));
             console.error(err);
@@ -38,11 +51,11 @@ export default function SignupForm({ onSwitchToLogin, isDark, onToggleTheme }) {
 
     return (
         <div className="w-full">
-            {/* Header cu titlu și Theme Toggle */}
+            {/* Header with title and theme toggle */}
             <div className="flex items-center justify-between mb-6">
                 <div>
                     <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Create Account</h2>
-                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Sign up to start tracking tasks</p>
+                    <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">Sign up to start tracking tasks</p>
                 </div>
                 <ThemeToggle isDark={isDark} onToggle={onToggleTheme} />
             </div>
@@ -63,29 +76,48 @@ export default function SignupForm({ onSwitchToLogin, isDark, onToggleTheme }) {
 
             <form onSubmit={handleSignup} className="space-y-4">
                 <div>
-                    <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">
-                        Email Address
+                    <label htmlFor="signup-name" className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+                        Display Name
                     </label>
                     <input
-                        type="email"
-                        placeholder="name@example.com"
-                        value={email}
-                        onChange={e => setEmail(e.target.value)}
-                        className="w-full px-4 py-3 rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-colors"
+                        id="signup-name"
+                        type="text"
+                        autoComplete="nickname"
+                        maxLength={NAME_MAX}
+                        placeholder="Shown on the leaderboard"
+                        value={name}
+                        onChange={e => setName(e.target.value)}
+                        className="w-full px-4 py-3 rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white placeholder-gray-400 text-base focus:outline-none focus:ring-4 focus:ring-indigo-500/15 focus:border-indigo-500 transition-all"
                         required
                     />
                 </div>
 
                 <div>
-                    <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">
+                    <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+                        Email Address
+                    </label>
+                    <input
+                        type="email"
+                        autoComplete="email"
+                        placeholder="name@example.com"
+                        value={email}
+                        onChange={e => setEmail(e.target.value)}
+                        className="w-full px-4 py-3 rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white placeholder-gray-400 text-base focus:outline-none focus:ring-4 focus:ring-indigo-500/15 focus:border-indigo-500 transition-all"
+                        required
+                    />
+                </div>
+
+                <div>
+                    <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
                         Password
                     </label>
                     <input
                         type="password"
+                        autoComplete="new-password"
                         placeholder="At least 6 characters"
                         value={password}
                         onChange={e => setPassword(e.target.value)}
-                        className="w-full px-4 py-3 rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-colors"
+                        className="w-full px-4 py-3 rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white placeholder-gray-400 text-base focus:outline-none focus:ring-4 focus:ring-indigo-500/15 focus:border-indigo-500 transition-all"
                         required
                     />
                 </div>
@@ -93,9 +125,9 @@ export default function SignupForm({ onSwitchToLogin, isDark, onToggleTheme }) {
                 <button
                     type="submit"
                     disabled={loading}
-                    className="w-full py-3 px-4 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white font-semibold rounded-xl shadow-sm transition-all duration-200 mt-2 cursor-pointer disabled:opacity-50 flex items-center justify-center"
+                    className="w-full py-3 px-4 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 active:scale-[0.98] text-white font-semibold rounded-xl shadow-sm transition-all duration-200 mt-2 disabled:opacity-60 flex items-center justify-center gap-2"
                 >
-                    {loading ? "Processing..." : "Sign Up"}
+                    {loading ? <><span className="size-4 animate-spin rounded-full border-2 border-white border-t-transparent" />Processing...</> : "Sign Up"}
                 </button>
             </form>
 

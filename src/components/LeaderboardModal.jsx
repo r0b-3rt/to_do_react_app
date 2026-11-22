@@ -1,7 +1,12 @@
 import { collection, getDocs } from "firebase/firestore";
+import { motion } from "framer-motion";
 import { useEffect, useState } from "react";
 import { db } from "../firebase";
 import { getRankInfo } from "../utils/ranks";
+import { CloseButton, Modal } from "./Modal";
+
+const positionColor = index =>
+    ["text-amber-500", "text-slate-400", "text-amber-700"][index] ?? "text-gray-400 dark:text-gray-500";
 
 export function LeaderboardModal({ isOpen, onClose, currentUserUid }) {
     const [users, setUsers] = useState([]);
@@ -9,104 +14,100 @@ export function LeaderboardModal({ isOpen, onClose, currentUserUid }) {
 
     useEffect(() => {
         if (!isOpen) return;
+        let cancelled = false;
 
-        const fetchLeaderboard = async () => {
+        (async () => {
             setLoading(true);
             try {
-                const querySnapshot = await getDocs(collection(db, "users"));
-                const usersList = querySnapshot.docs.map(doc => ({
-                    id: doc.id,
-                    ...doc.data(),
-                }));
-
-                // Sortăm descrescător după XP (cel mai mare XP primul)
-                usersList.sort((a, b) => (b.xp || 0) - (a.xp || 0));
-                setUsers(usersList);
+                const snapshot = await getDocs(collection(db, "users"));
+                const list = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+                list.sort((a, b) => (b.xp || 0) - (a.xp || 0));
+                if (!cancelled) setUsers(list);
             } catch (error) {
-                console.error("Eroare la preluarea leaderboard-ului:", error);
+                console.error("Failed to load leaderboard:", error);
             } finally {
-                setLoading(false);
+                if (!cancelled) setLoading(false);
             }
-        };
+        })();
 
-        fetchLeaderboard();
+        return () => {
+            cancelled = true;
+        };
     }, [isOpen]);
 
-    if (!isOpen) return null;
-
     return (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fadeIn">
-            <div className="w-full max-w-md bg-white dark:bg-gray-900 rounded-3xl p-6 shadow-2xl border border-gray-100 dark:border-gray-800 flex flex-col max-h-[80vh]">
-                <div className="flex items-center justify-between mb-4 pb-3 border-b border-gray-100 dark:border-gray-800">
-                    <div className="flex items-center gap-2">
-                        <span className="text-xl">🏆</span>
-                        <h3 className="text-lg font-bold text-gray-900 dark:text-white">Clasament Global</h3>
-                    </div>
-                    <button
-                        onClick={onClose}
-                        className="p-1.5 rounded-xl text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 transition-all cursor-pointer"
-                    >
-                        ✕
-                    </button>
+        <Modal isOpen={isOpen} onClose={onClose} label="Leaderboard">
+            <div className="mb-4 flex items-center justify-between border-b border-gray-100 pb-3 dark:border-gray-800">
+                <div className="flex items-center gap-2">
+                    <svg className="size-6 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M8 21h8m-4-4v4M7 4h10v5a5 5 0 01-10 0V4zM7 6H4v1a3 3 0 003 3M17 6h3v1a3 3 0 01-3 3" /></svg>
+                    <h3 className="text-lg font-bold text-gray-900 dark:text-white">Leaderboard</h3>
                 </div>
-
-                <div className="overflow-y-auto space-y-2 pr-1 flex-1">
-                    {loading ? (
-                        <p className="text-center text-sm text-gray-400 py-8">Se încarcă clasamentul...</p>
-                    ) : users.length === 0 ? (
-                        <p className="text-center text-sm text-gray-400 py-8">Niciun utilizator în clasament încă.</p>
-                    ) : (
-                        users.map((u, index) => {
-                            const rank = getRankInfo(u.xp || 0);
-                            const isMe = u.id === currentUserUid;
-
-                            return (
-                                <div
-                                    key={u.id}
-                                    className={`flex items-center justify-between p-3 rounded-2xl border transition-all ${
-                                        isMe
-                                            ? "bg-indigo-50/50 dark:bg-indigo-950/30 border-indigo-500/30"
-                                            : "bg-gray-50/50 dark:bg-gray-800/50 border-gray-200/50 dark:border-gray-700/50"
-                                    }`}
-                                >
-                                    <div className="flex items-center gap-3">
-                                        <span
-                                            className={`w-6 text-center font-bold text-sm ${index === 0 ? "text-amber-500" : index === 1 ? "text-slate-400" : index === 2 ? "text-amber-700" : "text-gray-400"}`}
-                                        >
-                                            #{index + 1}
-                                        </span>
-                                        <div>
-                                            <p className="text-xs font-bold text-gray-900 dark:text-white flex items-center gap-1.5">
-                                                {u.email || "Utilizator"}
-                                                {isMe && (
-                                                    <span className="text-[10px] text-indigo-500 font-normal">
-                                                        (Tu)
-                                                    </span>
-                                                )}
-                                            </p>
-                                            <span
-                                                className={`text-[9px] font-extrabold px-1.5 py-0.5 rounded-md border mt-0.5 inline-block ${rank.color}`}
-                                            >
-                                                {rank.name}
-                                            </span>
-                                        </div>
-                                    </div>
-                                    <span className="text-xs font-extrabold text-indigo-600 dark:text-indigo-400">
-                                        {u.xp || 0} XP
-                                    </span>
-                                </div>
-                            );
-                        })
-                    )}
-                </div>
-
-                <button
-                    onClick={onClose}
-                    className="w-full mt-4 py-2.5 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 font-semibold rounded-xl text-xs transition-all cursor-pointer"
-                >
-                    Închide
-                </button>
+                <CloseButton onClick={onClose} />
             </div>
-        </div>
+
+            <div className="thin-scroll min-h-24 flex-1 space-y-2 overflow-y-auto pr-1">
+                {loading ? (
+                    <div className="flex items-center justify-center gap-3 py-8 text-sm text-gray-500 dark:text-gray-400">
+                        <span className="size-4 animate-spin rounded-full border-2 border-indigo-500 border-t-transparent" />
+                        Loading leaderboard...
+                    </div>
+                ) : users.length === 0 ? (
+                    <p className="py-8 text-center text-sm text-gray-500 dark:text-gray-400">
+                        No players on the leaderboard yet.
+                    </p>
+                ) : (
+                    users.map((u, index) => {
+                        const rank = getRankInfo(u.xp || 0);
+                        const isMe = u.id === currentUserUid;
+
+                        return (
+                            <motion.div
+                                key={u.id}
+                                initial={{ opacity: 0, y: 10 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                transition={{ delay: Math.min(index, 8) * 0.04 }}
+                                className={`flex items-center justify-between gap-3 rounded-2xl border p-3 ${
+                                    isMe
+                                        ? "border-indigo-500/30 bg-indigo-50 dark:bg-indigo-950/30"
+                                        : "border-gray-200/60 bg-gray-50 dark:border-gray-700/50 dark:bg-gray-800/50"
+                                }`}
+                            >
+                                <div className="flex min-w-0 items-center gap-3">
+                                    <span className={`w-8 shrink-0 text-center text-sm font-bold ${positionColor(index)}`}>
+                                        #{index + 1}
+                                    </span>
+                                    <div className="min-w-0">
+                                        <p className="flex items-center gap-1.5 text-sm font-bold text-gray-900 dark:text-white">
+                                            <span className="truncate">{u.name || "Anonymous"}</span>
+                                            {isMe && (
+                                                <span className="shrink-0 text-xs font-normal text-indigo-600 dark:text-indigo-400">
+                                                    (You)
+                                                </span>
+                                            )}
+                                        </p>
+                                        <span
+                                            className={`mt-0.5 inline-block rounded-md border px-1.5 py-0.5 text-[11px] font-extrabold ${rank.color}`}
+                                        >
+                                            {rank.name}
+                                        </span>
+                                    </div>
+                                </div>
+                                <span className="shrink-0 text-sm font-extrabold text-indigo-600 tabular-nums dark:text-indigo-400">
+                                    {u.xp || 0} XP
+                                </span>
+                            </motion.div>
+                        );
+                    })
+                )}
+            </div>
+
+            <button
+                type="button"
+                onClick={onClose}
+                className="mt-4 w-full rounded-xl bg-gray-100 py-3 text-sm font-semibold text-gray-700 transition-all hover:bg-gray-200 active:scale-[0.98] dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
+            >
+                Close
+            </button>
+        </Modal>
     );
 }

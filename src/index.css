@@ -2,8 +2,18 @@
 
 @variant dark (&:where(.dark, .dark *));
 
+html {
+    color-scheme: light;
+    -webkit-tap-highlight-color: transparent;
+}
+
+html.dark {
+    color-scheme: dark;
+}
+
 body {
-    @apply bg-gray-50 text-gray-900 transition-colors duration-300;
+    @apply bg-gray-50 text-gray-900 antialiased transition-colors duration-300;
+    min-height: 100dvh;
 }
 
 .dark body {
@@ -12,7 +22,26 @@ body {
 
 button,
 input[type="checkbox"],
-input[type="radio"],
 [role="button"] {
-    cursor: pointer !important;
+    cursor: pointer;
+}
+
+button:disabled {
+    cursor: not-allowed;
+}
+
+/* Visible keyboard focus */
+:focus-visible {
+    outline: 2px solid var(--color-indigo-500);
+    outline-offset: 2px;
+}
+
+/* Subtle scrollbar */
+.thin-scroll {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-gray-300) transparent;
+}
+
+.dark .thin-scroll {
+    scrollbar-color: var(--color-gray-700) transparent;
 }

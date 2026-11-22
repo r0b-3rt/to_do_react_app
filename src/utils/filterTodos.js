@@ -1,5 +1,8 @@
 import { FILTERS } from "../constants/filters";
 
+// createdAt is null until serverTimestamp() is confirmed, so treat it as "now"
+const createdMillis = todo => todo.createdAt?.toMillis?.() ?? Number.MAX_SAFE_INTEGER;
+
 export const filterTodos = (todos, filter) => {
     let filtered = todos;
 
@@ -12,11 +15,9 @@ export const filterTodos = (todos, filter) => {
             break;
         case FILTERS.ALL:
         default:
-            filtered = todos;
             break;
     }
 
-    // Sortăm astfel încât cele necompletate (false) să fie primele,
-    // iar cele completate (true) să ajungă la final
-    return [...filtered].sort((a, b) => Number(a.completed) - Number(b.completed));
+    // Active tasks first, then newest first
+    return [...filtered].sort((a, b) => Number(a.completed) - Number(b.completed) || createdMillis(b) - createdMillis(a));
 };

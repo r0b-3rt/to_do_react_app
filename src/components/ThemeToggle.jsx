@@ -1,22 +1,19 @@
-import { motion } from "framer-motion";
+import { AnimatePresence, motion } from "framer-motion";
+import { IconButton } from "./IconButton";
 
-export const ThemeToggle = ({ isDark, onToggle }) => {
-    return (
-        <button
-            type="button"
-            onClick={onToggle}
-            className="p-2.5 rounded-2xl bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 transition-all cursor-pointer border border-gray-200/50 dark:border-gray-700/50 active:scale-95"
-            aria-label="Toggle theme"
-        >
-            <motion.div
+export const ThemeToggle = ({ isDark, onToggle }) => (
+    <IconButton onClick={onToggle} aria-label={isDark ? "Switch to light theme" : "Switch to dark theme"}>
+        <AnimatePresence mode="wait" initial={false}>
+            <motion.span
                 key={isDark ? "dark" : "light"}
-                initial={{ scale: 0.5, rotate: -90, opacity: 0 }}
+                initial={{ scale: 0.4, rotate: -90, opacity: 0 }}
                 animate={{ scale: 1, rotate: 0, opacity: 1 }}
-                transition={{ duration: 0.2 }}
+                exit={{ scale: 0.4, rotate: 90, opacity: 0 }}
+                transition={{ duration: 0.18 }}
+                className="flex"
             >
                 {isDark ? (
-                    // Iconita Soare pentru a trece la Light Mode
-                    <svg className="w-5 h-5 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg className="size-5 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path
                             strokeLinecap="round"
                             strokeLinejoin="round"
@@ -25,8 +22,7 @@ export const ThemeToggle = ({ isDark, onToggle }) => {
                         />
                     </svg>
                 ) : (
-                    // Iconita Luna pentru a trece la Dark Mode
-                    <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg className="size-5 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path
                             strokeLinecap="round"
                             strokeLinejoin="round"
@@ -35,7 +31,7 @@ export const ThemeToggle = ({ isDark, onToggle }) => {
                         />
                     </svg>
                 )}
-            </motion.div>
-        </button>
-    );
-};
+            </motion.span>
+        </AnimatePresence>
+    </IconButton>
+);

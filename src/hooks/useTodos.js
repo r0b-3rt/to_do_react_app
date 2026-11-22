@@ -3,115 +3,109 @@ import {
     collection,
     deleteDoc,
     doc,
-    getDoc,
     increment,
     onSnapshot,
     query,
     serverTimestamp,
-    setDoc,
-    updateDoc,
     where,
+    writeBatch,
 } from "firebase/firestore";
 import { useEffect, useState } from "react";
 import { FILTERS } from "../constants/filters";
 import { db } from "../firebase";
 import { filterTodos } from "../utils/filterTodos";
-import { calculateTaskXp } from "../utils/geminiXp";
+import { calculateTaskXp } from "../utils/taskXp";
 
 export const useTodos = user => {
-    const [todos, setTodos] = useState([]);
+    const [data, setData] = useState({ uid: null, todos: [], xp: 0, name: "" });
     const [filter, setFilter] = useState(FILTERS.ALL);
-    const [userXp, setUserXp] = useState(0); // Starea pentru XP-ul total din colecția 'users'
+    const [xpNotice, setXpNotice] = useState(null);
 
-    // Sincronizare în timp real cu Firestore pentru task-uri și XP-ul utilizatorului
+    const uid = user?.uid ?? null;
+
     useEffect(() => {
-        if (!user) {
-            setTodos([]);
-            setUserXp(0);
-            return;
-        }
+        if (!uid) return;
 
-        // 1. Ascultăm task-urile utilizatorului
-        const q = query(collection(db, "todos"), where("userId", "==", user.uid));
+        const q = query(collection(db, "todos"), where("userId", "==", uid));
         const unsubscribeTodos = onSnapshot(
             q,
             snapshot => {
-                const todosData = snapshot.docs.map(doc => ({
-                    id: doc.id,
-                    ...doc.data(),
-                }));
-                setTodos(todosData);
+                const todosData = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+                setData(prev => ({ ...prev, uid, todos: todosData }));
             },
-            error => {
-                console.error("Eroare la preluarea taskurilor:", error);
-            },
+            error => console.error("Failed to load tasks:", error),
         );
 
-        // 2. Ascultăm documentul utilizatorului din colecția 'users' pentru XP total în timp real
-        const userRef = doc(db, "users", user.uid);
         const unsubscribeUser = onSnapshot(
-            userRef,
+            doc(db, "users", uid),
             docSnap => {
-                if (docSnap.exists()) {
-                    setUserXp(docSnap.data().xp || 0);
-                } else {
-                    setUserXp(0);
-                }
+                const d = docSnap.exists() ? docSnap.data() : {};
+                setData(prev => ({ ...prev, uid, xp: d.xp || 0, name: d.name || "" }));
             },
-            error => {
-                console.error("Eroare la preluarea XP-ului:", error);
-            },
+            error => console.error("Failed to load XP:", error),
         );
 
         return () => {
             unsubscribeTodos();
             unsubscribeUser();
         };
-    }, [user]);
+    }, [uid]);
+
+    // Data only belongs to the current user if the uid matches (avoids showing stale data after logout)
+    const isCurrent = data.uid === uid && uid !== null;
+    const todos = isCurrent ? data.todos : [];
+    const userXp = isCurrent ? data.xp : 0;
+    const userName = (isCurrent && data.name) || user?.displayName || "";
 
     const addTodo = async (text, time) => {
         if (!text.trim() || !user) return;
-
         try {
             await addDoc(collection(db, "todos"), {
                 userId: user.uid,
                 text: text.trim(),
-                time: time || null,
+                time: time?.trim() || null,
                 completed: false,
+                xpAwarded: false,
                 createdAt: serverTimestamp(),
             });
         } catch (error) {
-            console.error("Eroare la adăugarea taskului:", error);
+            console.error("Failed to add task:", error);
         }
     };
 
-    const toggleTodo = async (id, currentCompleted) => {
+    const toggleTodo = async id => {
+        const target = todos.find(t => t.id === id);
+        if (!target || !user) return;
+
         try {
+            const batch = writeBatch(db);
             const todoRef = doc(db, "todos", id);
-            const targetTodo = todos.find(t => t.id === id);
 
-            if (!currentCompleted && targetTodo && user) {
-                const evaluation = await calculateTaskXp(targetTodo.text);
+            // XP is awarded only once per task, on the first completion
+            const shouldAward = !target.completed && !target.xpAwarded;
 
-                alert(`🎉 +${evaluation.xp} XP obținut!\n🤖 Motiv: ${evaluation.reason}`);
-
-                const userRef = doc(db, "users", user.uid);
-                const userSnap = await getDoc(userRef);
-
-                if (!userSnap.exists()) {
-                    await setDoc(userRef, { xp: evaluation.xp, email: user.email });
-                } else {
-                    await updateDoc(userRef, {
-                        xp: increment(evaluation.xp),
-                    });
-                }
+            if (shouldAward) {
+                const startOfDay = new Date().setHours(0, 0, 0, 0);
+                const completedToday = todos.filter(t => t.xpGiven > 0 && (t.xpAt?.toMillis?.() ?? Date.now()) >= startOfDay).length;
+                const evaluation = calculateTaskXp(target.text, {
+                    createdAtMs: target.createdAt?.toMillis?.() ?? null,
+                    completedToday,
+                    previousTexts: todos.filter(t => t.id !== id && t.xpGiven > 0).map(t => t.text),
+                });
+                batch.update(todoRef, { completed: true, xpAwarded: true, xpGiven: evaluation.xp, xpAt: serverTimestamp() });
+                batch.set(
+                    doc(db, "users", user.uid),
+                    { xp: increment(evaluation.xp), ...(userName && { name: userName }) },
+                    { merge: true },
+                );
+                await batch.commit();
+                setXpNotice({ id: Date.now(), xp: evaluation.xp, reason: evaluation.reason });
+            } else {
+                batch.update(todoRef, { completed: !target.completed });
+                await batch.commit();
             }
-
-            await updateDoc(todoRef, {
-                completed: !currentCompleted,
-            });
         } catch (error) {
-            console.error("Eroare la actualizarea taskului sau acordarea XP-ului:", error);
+            console.error("Failed to update task or award XP:", error);
         }
     };
 
@@ -119,35 +113,36 @@ export const useTodos = user => {
         try {
             await deleteDoc(doc(db, "todos", id));
         } catch (error) {
-            console.error("Eroare la ștergerea taskului:", error);
+            console.error("Failed to delete task:", error);
         }
     };
 
     const clearCompleted = async () => {
         try {
-            const completedTodos = todos.filter(todo => todo.completed);
-            await Promise.all(completedTodos.map(todo => deleteDoc(doc(db, "todos", todo.id))));
+            const batch = writeBatch(db);
+            todos.filter(todo => todo.completed).forEach(todo => batch.delete(doc(db, "todos", todo.id)));
+            await batch.commit();
         } catch (error) {
-            console.error("Eroare la ștergerea taskurilor gata:", error);
+            console.error("Failed to clear completed tasks:", error);
         }
     };
 
-    const filteredTodos = filterTodos(todos, filter);
     const activeCount = todos.filter(todo => !todo.completed).length;
-    const completedCount = todos.length - activeCount;
 
     return {
-        todos: filteredTodos,
-        allTodosCount: todos.length,
+        todos: filterTodos(todos, filter),
         activeCount,
-        completedCount,
+        completedCount: todos.length - activeCount,
         filter,
         setFilter,
         addTodo,
         toggleTodo,
         deleteTodo,
         clearCompleted,
-        userXp, // <--- Returnăm XP-ul total aici
+        userXp,
+        userName,
+        xpNotice,
+        dismissXpNotice: () => setXpNotice(null),
     };
 };
 

@@ -6,7 +6,7 @@ export const useLocalStorage = (key, initialValue) => {
             const saved = localStorage.getItem(key);
             return saved !== null ? JSON.parse(saved) : initialValue;
         } catch (error) {
-            console.error(`Eroare la citirea din localStorage (${key}):`, error);
+            console.error(`Failed to read from localStorage (${key}):`, error);
             return initialValue;
         }
     });
@@ -15,7 +15,7 @@ export const useLocalStorage = (key, initialValue) => {
         try {
             localStorage.setItem(key, JSON.stringify(value));
         } catch (error) {
-            console.error(`Eroare la salvarea în localStorage (${key}):`, error);
+            console.error(`Failed to save to localStorage (${key}):`, error);
         }
     }, [key, value]);
 
